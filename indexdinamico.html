@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bracket Dinámico (4/8/16/32) - Izquierda/Derecha</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --card:#121824; --text:#eaf2ff; --muted:#9bb0c3; --line:rgba(255,255,255,.12);
+      --radius:14px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg); color:var(--text); line-height:1.35;
+    }
+    .wrap{ max-width:1400px; margin:0 auto; padding:18px 14px 40px; }
+    h1{ margin:0; font-size:1.2rem; }
+    p{ margin:6px 0 0; color:var(--muted); }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:14px;
+      margin-top:12px;
+    }
+
+    .row{
+      display:flex; flex-wrap:wrap; gap:10px;
+      align-items:center; justify-content:space-between;
+    }
+    .controls{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    }
+    select, button{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.05);
+      color:var(--text);
+      font-weight:700;
+    }
+    button{ cursor:pointer; }
+    button.primary{
+      background:#1f6feb;
+      border-color:rgba(31,111,235,.45);
+    }
+    button.ghost{ background:transparent; }
+
+    table{ width:100%; border-collapse:collapse; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    th, td{ padding:10px; border-bottom:1px solid var(--line); }
+    th{ text-align:left; color:var(--muted); background:rgba(255,255,255,.03); font-weight:600; }
+    tr:last-child td{ border-bottom:0; }
+    input{
+      width:100%;
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      outline:none;
+    }
+
+    .msg{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+    }
+    .msg.ok{ border-color:rgba(46,160,67,.45); color:#b9f6c7; }
+    .msg.warn{ border-color:rgba(255,193,7,.45); color:#ffe7a6; }
+    .msg.err{ border-color:rgba(255,99,132,.45); color:#ffd0d8; }
+
+    /* BRACKET */
+    .bracket-wrap{
+      position:relative;
+      overflow:auto;
+      padding:18px 10px;
+    }
+    #lines{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
+
+    /* modo simple (4/8): rondas en fila */
+    .bracket-simple{
+      position:relative;
+      display:flex;
+      gap:16px;
+      align-items:flex-start;
+      min-width:900px;
+    }
+
+    /* modo dual (16/32): izquierda | centro | derecha */
+    .bracket-dual{
+      position:relative;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:16px;
+      min-width:1200px;
+    }
+    .side{
+      display:flex;
+      gap:18px;
+      align-items:flex-start;
+    }
+    .side.R{
+      flex-direction:row-reverse; /* espejo visual */
+    }
+    .center{
+      min-width:240px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+    }
+
+    .round{
+      min-width:240px;
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+    .round .label{
+      color:var(--muted);
+      font-size:.9rem;
+      margin-bottom:2px;
+    }
+    .match{
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px;
+      background:rgba(255,255,255,.03);
+    }
+    .match-title{
+      font-size:.82rem;
+      color:var(--muted);
+      margin:0 0 8px;
+    }
+    .slots{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    @media print{
+      body{ background:#fff; color:#000; }
+      .card{ background:#fff; border-color:#bbb; }
+      table, th, td, input, select{ border-color:#bbb; color:#000; background:#fff; }
+      .controls, .msg{ display:none; }
+      .match{ background:#fff; border-color:#bbb; }
+      .bracket-wrap{ overflow:visible; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Bracket dinámico (4 / 8 / 16 / 32) con lados (16/32)</h1>
+    <p>Para 16 y 32: bracket dividido izquierda/derecha + final al centro.</p>
+
+    <section class="card">
+      <div class="row">
+        <div class="controls">
+          <label style="color:var(--muted); font-weight:600;">
+            Participantes:
+            <select id="count">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="16">16</option>
+              <option value="32">32</option>
+            </select>
+          </label>
+
+          <button id="build" class="primary" type="button">Crear/Actualizar</button>
+          <button id="fill" type="button">Rellenar bracket</button>
+          <button id="shuffle" type="button">Mezclar y rellenar</button>
+          <button id="clear" class="ghost" type="button">Limpiar</button>
+        </div>
+
+        <div style="color:var(--muted); font-size:.92rem;">
+          Consejo: 32 jugadores = scroll horizontal.
+        </div>
+      </div>
+
+      <div id="msg" class="msg" role="status">
+        Selecciona participantes y presiona “Crear/Actualizar”.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 10px; font-size:1.05rem;">Registro de participantes</h2>
+      <div id="regTable"></div>
+    </section>
+
+    <section class="card bracket-wrap" id="bracketWrap">
+      <svg id="lines"></svg>
+      <div id="bracket"></div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+
+    function setMsg(text, type=""){
+      const el = $("#msg");
+      el.textContent = text;
+      el.className = "msg " + type;
+    }
+
+    // ---------- Registro ----------
+    function buildRegister(n){
+      let html = `<table>
+        <thead><tr><th style="width:60px;">#</th><th>Nombre / Nick</th></tr></thead><tbody>`;
+      for(let i=1;i<=n;i++){
+        html += `<tr><td>${i}</td><td><input class="player" placeholder="Jugador ${i}"></td></tr>`;
+      }
+      html += `</tbody></table>`;
+      $("#regTable").innerHTML = html;
+    }
+
+    function getPlayers(){
+      return Array.from(document.querySelectorAll(".player"))
+        .map(i => i.value.trim())
+        .filter(v => v.length > 0);
+    }
+
+    function shuffle(arr){
+      const a = [...arr];
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    const labelByPlayers = (players) => {
+      if(players === 2) return "Final";
+      if(players === 4) return "Semifinales";
+      if(players === 8) return "Cuartos";
+      if(players === 16) return "Octavos";
+      if(players === 32) return "Dieciseisavos";
+      return `Ronda (${players})`;
+    };
+
+    // ---------- Bracket SIMPLE (4/8) ----------
+    function buildBracketSimple(n){
+      const rounds = Math.log2(n);
+      const host = $("#bracket");
+      host.className = "bracket-simple";
+      host.innerHTML = "";
+
+      for(let r=0;r<rounds;r++){
+        const matches = n / Math.pow(2, r+1);
+        const playersThisRound = n / Math.pow(2, r);
+
+        const col = document.createElement("div");
+        col.className = "round";
+        col.dataset.mode = "simple";
+        col.dataset.round = String(r);
+        col.dataset.matches = String(matches);
+
+        col.innerHTML = `<div class="label">${labelByPlayers(playersThisRound)}</div>`;
+
+        for(let m=0;m<matches;m++){
+          const id = `S_r${r}m${m}`;
+          const box = document.createElement("div");
+          box.className = "match";
+          box.id = id;
+          box.innerHTML = `
+            <div class="match-title">${r===0 ? `M${m+1}` : `${labelByPlayers(playersThisRound)} ${m+1}`}</div>
+            <div class="slots">
+              <input id="${id}a" placeholder="${r===0 ? "Jugador A" : "Ganador anterior"}">
+              <input id="${id}b" placeholder="${r===0 ? "Jugador B" : "Ganador anterior"}">
+            </div>
+          `;
+          col.appendChild(box);
+        }
+        host.appendChild(col);
+      }
+
+      host.style.minWidth = (rounds >= 3) ? "1100px" : "900px";
+      drawLines();
+    }
+
+    // ---------- Bracket DUAL (16/32) ----------
+    // Se divide en dos mitades: izquierda y derecha, cada una produce su campeón -> final
+    function buildSide(sideKey, half){
+      // sideKey = "L" o "R"
+      // half = 8 (para 16) o 16 (para 32)
+      const rounds = Math.log2(half); // rondas dentro del lado
+      const side = document.createElement("div");
+      side.className = `side ${sideKey}`;
+      side.dataset.mode = "dual";
+      side.dataset.half = String(half);
+
+      // Construimos rondas desde la primera (más jugadores) hacia la última (campeón del lado)
+      for(let r=0;r<rounds;r++){
+        const matches = half / Math.pow(2, r+1);
+        const playersThisRound = half / Math.pow(2, r);
+
+        const col = document.createElement("div");
+        col.className = "round";
+        col.dataset.mode = "dual";
+        col.dataset.side = sideKey;
+        col.dataset.round = String(r);
+        col.dataset.matches = String(matches);
+
+        col.innerHTML = `<div class="label">${labelByPlayers(playersThisRound)} (${sideKey==="L" ? "Izq" : "Der"})</div>`;
+
+        for(let m=0;m<matches;m++){
+          const id = `${sideKey}_r${r}m${m}`;
+          const box = document.createElement("div");
+          box.className = "match";
+          box.id = id;
+          box.innerHTML = `
+            <div class="match-title">${r===0 ? `M${sideKey==="L" ? (m+1) : (m+1 + matches)}`
+                                             : `${labelByPlayers(playersThisRound)} ${m+1}`}</div>
+            <div class="slots">
+              <input id="${id}a" placeholder="${r===0 ? "Jugador A" : "Ganador anterior"}">
+              <input id="${id}b" placeholder="${r===0 ? "Jugador B" : "Ganador anterior"}">
+            </div>
+          `;
+          col.appendChild(box);
+        }
+        side.appendChild(col);
+      }
+
+      return side;
+    }
+
+    function buildBracketDual(n){
+      const host = $("#bracket");
+      host.className = "bracket-dual";
+      host.innerHTML = "";
+
+      const half = n/2; // 8 o 16
+      const left = buildSide("L", half);
+      const right = buildSide("R", half);
+
+      const center = document.createElement("div");
+      center.className = "center";
+      center.innerHTML = `
+        <div class="label">Final</div>
+        <div class="match" id="FINAL">
+          <div class="match-title">F</div>
+          <div class="slots">
+            <input id="FINALa" placeholder="Campeón Izq">
+            <input id="FINALb" placeholder="Campeón Der">
+          </div>
+        </div>
+      `;
+
+      host.appendChild(left);
+      host.appendChild(center);
+      host.appendChild(right);
+
+      host.style.minWidth = (n === 32) ? "1600px" : "1300px";
+      drawLines();
+    }
+
+    // ---------- Construcción general ----------
+    function buildAll(){
+      const n = parseInt($("#count").value, 10);
+      buildRegister(n);
+
+      if(n <= 8){
+        buildBracketSimple(n);
+        setMsg(`Listo ✅ Bracket simple creado para ${n} participantes.`, "ok");
+      }else{
+        buildBracketDual(n);
+        setMsg(`Listo ✅ Bracket por lados creado para ${n} participantes (izq/der + final).`, "ok");
+      }
+    }
+
+    // ---------- Relleno ----------
+    function clearBracket(){
+      document.querySelectorAll("#bracket input").forEach(i => i.value = "");
+      drawLines();
+    }
+
+    function fill(n, players){
+      if(n <= 8){
+        // Solo ronda 0 del modo simple
+        const matches = n/2;
+        for(let m=0;m<matches;m++){
+          const id = `S_r0m${m}`;
+          document.getElementById(id+"a").value = players[m*2] ?? "";
+          document.getElementById(id+"b").value = players[m*2+1] ?? "";
+        }
+      }else{
+        // Dual: mitad izquierda y mitad derecha
+        const half = n/2;
+        const L = players.slice(0, half);
+        const R = players.slice(half, n);
+
+        const matchesPerSide = half/2;
+        for(let m=0;m<matchesPerSide;m++){
+          const lid = `L_r0m${m}`;
+          document.getElementById(lid+"a").value = L[m*2] ?? "";
+          document.getElementById(lid+"b").value = L[m*2+1] ?? "";
+
+          const rid = `R_r0m${m}`;
+          document.getElementById(rid+"a").value = R[m*2] ?? "";
+          document.getElementById(rid+"b").value = R[m*2+1] ?? "";
+        }
+      }
+      drawLines();
+    }
+
+    // ---------- Líneas SVG ----------
+    function drawElbow(svg, x1, y1, x2, y2){
+      const midX = (x1 + x2) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "rgba(255,255,255,.35)");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(path);
+    }
+
+    function drawLines(){
+      const wrap = $("#bracketWrap");
+      const svg = $("#lines");
+      const brWrap = wrap.getBoundingClientRect();
+
+      svg.setAttribute("width", wrap.scrollWidth);
+      svg.setAttribute("height", wrap.scrollHeight);
+      svg.setAttribute("viewBox", `0 0 ${wrap.scrollWidth} ${wrap.scrollHeight}`);
+
+      while(svg.firstChild) svg.removeChild(svg.firstChild);
+
+      const centerRight = (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: (r.right - brWrap.left + wrap.scrollLeft), y: (r.top + r.height/2 - brWrap.top + wrap.scrollTop) };
+      };
+      const centerLeft = (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: (r.left - brWrap.left + wrap.scrollLeft), y: (r.top + r.height/2 - brWrap.top + wrap.scrollTop) };
+      };
+
+      const host = $("#bracket");
+      const dual = host.classList.contains("bracket-dual");
+
+      if(!dual){
+        // SIMPLE: conecta r -> r+1
+        const rounds = Array.from(host.querySelectorAll(".round"));
+        for(let r=0;r<rounds.length-1;r++){
+          const matchesThis = parseInt(rounds[r].dataset.matches, 10);
+          for(let m=0;m<matchesThis;m++){
+            const from = document.getElementById(`S_r${r}m${m}`);
+            const to = document.getElementById(`S_r${r+1}m${Math.floor(m/2)}`);
+            if(!from || !to) continue;
+            drawElbow(svg, centerRight(from).x, centerRight(from).y, centerLeft(to).x, centerLeft(to).y);
+          }
+        }
+        return;
+      }
+
+      // DUAL: por cada lado conecta r -> r+1
+      const sides = ["L","R"];
+      sides.forEach(sideKey => {
+        const rounds = Array.from(host.querySelectorAll(`.round[data-side="${sideKey}"]`));
+        // rounds vienen en DOM: para R, visualmente está invertido por CSS, pero el id/round sigue igual
+        const maxRound = Math.max(...rounds.map(r => parseInt(r.dataset.round,10)));
+
+        for(let r=0;r<maxRound;r++){
+          const matchesThis = parseInt(host.querySelector(`.round[data-side="${sideKey}"][data-round="${r}"]`).dataset.matches, 10);
+          for(let m=0;m<matchesThis;m++){
+            const from = document.getElementById(`${sideKey}_r${r}m${m}`);
+            const to = document.getElementById(`${sideKey}_r${r+1}m${Math.floor(m/2)}`);
+            if(!from || !to) continue;
+
+            if(sideKey === "L"){
+              // Lado izq: del borde derecho del hijo -> borde izquierdo del padre
+              drawElbow(svg, centerRight(from).x, centerRight(from).y, centerLeft(to).x, centerLeft(to).y);
+            }else{
+              // Lado der: del borde izquierdo del hijo -> borde derecho del padre (espejo)
+              drawElbow(svg, centerLeft(from).x, centerLeft(from).y, centerRight(to).x, centerRight(to).y);
+            }
+          }
+        }
+
+        // Conexión campeón del lado -> Final
+        const champ = document.getElementById(`${sideKey}_r${maxRound}m0`);
+        const final = document.getElementById("FINAL");
+        if(champ && final){
+          if(sideKey === "L"){
+            drawElbow(svg, centerRight(champ).x, centerRight(champ).y, centerLeft(final).x, centerLeft(final).y);
+          }else{
+            drawElbow(svg, centerLeft(champ).x, centerLeft(champ).y, centerRight(final).x, centerRight(final).y);
+          }
+        }
+      });
+    }
+
+    // ---------- Eventos ----------
+    $("#build").addEventListener("click", buildAll);
+
+    $("#fill").addEventListener("click", () => {
+      const n = parseInt($("#count").value, 10);
+      const players = getPlayers();
+      if(players.length < n){
+        setMsg(`Te faltan jugadores: tienes ${players.length}/${n}.`, "warn");
+        return;
+      }
+      fill(n, players.slice(0,n));
+      setMsg("Listo Ronda inicial rellenada (si es 16/32: mitad izq y mitad der).", "ok");
+    });
+
+    $("#shuffle").addEventListener("click", () => {
+      const n = parseInt($("#count").value, 10);
+      const players = getPlayers();
+      if(players.length < n){
+        setMsg(`Te faltan jugadores: tienes ${players.length}/${n}.`, "warn");
+        return;
+      }
+      fill(n, shuffle(players).slice(0,n));
+      setMsg("Listo Ronda inicial mezclada y rellenada.", "ok");
+    });
+
+    $("#clear").addEventListener("click", () => {
+      clearBracket();
+      setMsg("Bracket limpiado.", "warn");
+    });
+
+    window.addEventListener("resize", drawLines);
+    $("#bracketWrap").addEventListener("scroll", drawLines);
+
+    // init
+    buildAll();
+    setMsg("Plantilla lista. Cambia 4/8/16/32 y presiona “Crear/Actualizar”.", "ok");
+  </script>
+</body>
+</html>
